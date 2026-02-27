@@ -3,10 +3,50 @@ import { createServer as createViteServer } from "vite";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
+async function initDb() {
+  const connectionConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'password',
+    multipleStatements: true // Important for running schema.sql
+  };
+
+  try {
+    const connection = await mysql.createConnection(connectionConfig);
+    console.log("Connected to MariaDB server for initialization.");
+
+    // Create database if not exists
+    const dbName = process.env.DB_NAME || 'datastruct_db';
+    await connection.query(`CREATE DATABASE IF NOT EXISTS ${dbName}`);
+    await connection.query(`USE ${dbName}`);
+
+    // Read and execute schema.sql
+    const schemaPath = path.join(process.cwd(), "schema.sql");
+    if (fs.existsSync(schemaPath)) {
+      const schema = fs.readFileSync(schemaPath, "utf8");
+      await connection.query(schema);
+      console.log("Database schema initialized successfully.");
+    } else {
+      console.warn("schema.sql not found, skipping table creation.");
+    }
+
+    await connection.end();
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+    // We don't exit here to allow the app to start even if DB is not ready
+  }
+}
+
 async function startServer() {
+  // Initialize DB before starting the server
+  await initDb();
+
   const app = express();
   const PORT = 3000;
 
